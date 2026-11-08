@@ -122,8 +122,10 @@ async function spotify(pathname, options = {}) {
     err.status = res.status;
     throw err;
   }
+  // Algunas acciones (play, pausa, seek, transferir) a veces responden 200 con un id en
+  // texto plano en vez de JSON: eso es éxito, no un error.
   const text = await res.text();
-  return text ? JSON.parse(text) : null;
+  try { return text ? JSON.parse(text) : null; } catch { return null; }
 }
 
 const toSong = (t) => ({
