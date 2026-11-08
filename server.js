@@ -49,6 +49,8 @@ function writeJSON(file, value) {
 }
 const VOCAB_FILE = path.join(DATA, "vocab.json");
 const STATS_FILE = path.join(DATA, "stats.json");
+const PLAYS_FILE = path.join(DATA, "plays.json"); // historial propio: { played_at: canción }
+const LANG_FILE = path.join(DATA, "lang.json");   // idioma ya calculado por canción
 
 // ---------- IA ----------
 class ProviderError extends Error {}
@@ -190,6 +192,19 @@ Responde únicamente con JSON: {"term": "la palabra o expresión en su forma bas
 // ---------- letras (LRCLIB) ----------
 const LRCLIB_HEADERS = { "user-agent": "LetraLab/0.1 (app personal)" };
 
+// LRCLIB a veces falla o limita si se le piden muchas letras seguidas: reintentar con pausa.
+async function lrclib(url) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { headers: LRCLIB_HEADERS, signal: AbortSignal.timeout(15000) });
+      if (res.ok || res.status === 404 || attempt >= 2) return res;
+    } catch (e) {
+      if (attempt >= 2) throw e;
+    }
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
+}
+
 async function getLyrics({ track, artist, album, duration }) {
   const file = path.join(DATA, "lyrics", keyOf(`${artist}|${track}`.toLowerCase()) + ".json");
   const cached = readJSON(file, null);
@@ -199,23 +214,83 @@ async function getLyrics({ track, artist, album, duration }) {
   const params = new URLSearchParams({ track_name: track, artist_name: artist });
   if (album) params.set("album_name", album);
   if (duration) params.set("duration", String(Math.round(duration)));
-  let res = await fetch(`https://lrclib.net/api/get?${params}`, { headers: LRCLIB_HEADERS });
+  let res = await lrclib(`https://lrclib.net/api/get?${params}`);
   if (res.ok) found = await res.json();
+  else if (res.status !== 404) throw new Error(`LRCLIB respondió ${res.status}`);
 
   if (!found) {
     // Búsqueda más flexible si la exacta falla.
     const q = new URLSearchParams({ track_name: track, artist_name: artist });
-    res = await fetch(`https://lrclib.net/api/search?${q}`, { headers: LRCLIB_HEADERS });
-    if (res.ok) {
-      const list = await res.json();
-      found = list.find((x) => x.syncedLyrics) || list[0] || null;
-    }
+    res = await lrclib(`https://lrclib.net/api/search?${q}`);
+    if (!res.ok) throw new Error(`LRCLIB respondió ${res.status}`);
+    const list = await res.json();
+    found = list.find((x) => x.syncedLyrics) || list[0] || null;
   }
 
   const result = found
     ? { found: true, synced: parseLRC(found.syncedLyrics), plain: found.plainLyrics || "", instrumental: !!found.instrumental }
     : { found: false };
   if (found) writeJSON(file, result);
+  return result;
+}
+
+// ---------- idioma de una letra ----------
+// Cuenta, línea por línea, palabras muy frecuentes que solo existen en inglés o solo en
+// español. Sin IA: es instantáneo y gratis, y con letras completas acierta de sobra.
+const EN_WORDS = new Set(("the you i i'm i'll i've i'd you're your yours it's is are was were be been am " +
+  "and but or if what when where who why how this that these those my mine me we us our they them their " +
+  "he she his her him it with without for from of to in on at by up down out over just like know want " +
+  "don't can't won't ain't gonna wanna gotta can will would should could do does did have has had get got " +
+  "go going love feel never ever always all not no yeah oh baby girl boy night day time life one more " +
+  "now then there here again only still way make made say said see tell think need let back away too " +
+  "every some something nothing anything everything around through into").split(" "));
+const ES_WORDS = new Set(("el la los las un una unos unas que de del y en por para con sin es eres soy " +
+  "estoy está estás están son era fue ser estar yo tú tu tus mi mis te nos se lo le les su sus ella él " +
+  "ellos nosotros usted pero porque cuando donde como qué quién cómo muy más menos ya también siempre " +
+  "nunca todo toda todos nada algo aquí allá ahora hoy noche día vida amor quiero quieres tengo tienes " +
+  "hay voy vas va vamos hacer hago sé sabes puedo puede mucho poco bien mal así esta este eso esto ese " +
+  "esa contigo conmigo mami papi bebé corazón otra otro vez hasta desde sobre entre").split(" "));
+
+function englishRatio(lines) {
+  let en = 0, es = 0;
+  for (const raw of lines) {
+    const line = raw.toLowerCase();
+    let e = 0, s = /[ñáéíóú¿¡]/.test(line) ? 2 : 0;
+    for (const w of line.match(/[a-záéíóúñü']+/g) || []) {
+      if (EN_WORDS.has(w)) e++;
+      if (ES_WORDS.has(w)) s++;
+    }
+    if (e > s) en++;
+    else if (s > e) es++;
+  }
+  return en + es ? en / (en + es) : null;
+}
+
+// "en" si al menos el 60 % de las líneas son en inglés: así una canción en español con un
+// coro o unas frases en inglés cuenta como español.
+async function songLanguage(song) {
+  const key = `${song.artist}|${song.track}`.toLowerCase();
+  const cache = readJSON(LANG_FILE, {});
+  const hit = cache[key];
+  // Las que no tenían letra se vuelven a buscar al día siguiente.
+  if (hit && (hit.lang !== "unknown" || Date.now() - hit.at < 864e5)) return hit;
+
+  const lyr = await getLyrics(song);
+  let result;
+  if (lyr.instrumental) result = { lang: "instrumental" };
+  else if (lyr.found) {
+    const lines = lyr.synced ? lyr.synced.map((l) => l.text) : lyr.plain.split(/\r?\n/);
+    const ratio = englishRatio(lines.filter((l) => l.trim()));
+    result = ratio === null ? { lang: "unknown" } : { lang: ratio >= 0.6 ? "en" : "es", en: Math.round(ratio * 100) };
+  } else {
+    // Sin letra: al menos mirar el título.
+    const ratio = englishRatio([song.track]);
+    result = { lang: ratio === 0 ? "es" : "unknown" };
+  }
+  result.at = Date.now();
+  const fresh = readJSON(LANG_FILE, {});
+  fresh[key] = result;
+  writeJSON(LANG_FILE, fresh);
   return result;
 }
 
@@ -323,6 +398,46 @@ const server = http.createServer(async (req, res) => {
         writeJSON(STATS_FILE, stats);
         return send(res, 200, stats);
       }
+    }
+
+    // Idioma de varias canciones: { songs: [{ id, track, artist, album, duration }] } → { id: { lang, en } }
+    if (url.pathname === "/api/lang" && req.method === "POST") {
+      const { songs = [] } = await readBody(req);
+      const out = {};
+      const queue = songs.slice(0, 50);
+      // De a 2 a la vez, para no saturar LRCLIB. Si una falla, no se guarda: se reintenta luego.
+      await Promise.all(Array.from({ length: 2 }, async () => {
+        for (let s = queue.shift(); s; s = queue.shift()) {
+          try { out[s.id] = await songLanguage(s); } catch { out[s.id] = { lang: "unknown" }; }
+        }
+      }));
+      // Sin letra: si las demás canciones del artista que ya conocemos son en español, esta
+      // también lo es casi seguro.
+      const known = Object.entries(readJSON(LANG_FILE, {}));
+      for (const s of songs) {
+        if (out[s.id]?.lang !== "unknown") continue;
+        const artist = s.artist.toLowerCase() + "|";
+        const langs = known.filter(([k, v]) => k.startsWith(artist) && ["en", "es"].includes(v.lang)).map(([, v]) => v.lang);
+        const es = langs.filter((l) => l === "es").length;
+        if (langs.length && es / langs.length >= 0.7) out[s.id] = { lang: "es", guess: true };
+      }
+      return send(res, 200, out);
+    }
+
+    // Historial de reproducciones. Spotify solo devuelve las últimas 50, así que se van
+    // guardando aquí para poder armar "Última semana" aunque escuches mucho.
+    if (url.pathname === "/api/plays" && req.method === "POST") {
+      const { plays = [], days = 7 } = await readBody(req);
+      const all = readJSON(PLAYS_FILE, {});
+      for (const p of plays) if (p.played_at && p.song?.id) all[p.played_at] = p.song;
+      const keepFrom = Date.now() - 90 * 864e5; // se guardan 90 días
+      for (const k of Object.keys(all)) if (Date.parse(k) < keepFrom) delete all[k];
+      writeJSON(PLAYS_FILE, all);
+      const from = Date.now() - days * 864e5;
+      const recent = Object.entries(all)
+        .filter(([k]) => Date.parse(k) >= from)
+        .map(([played_at, song]) => ({ played_at, song }));
+      return send(res, 200, recent);
     }
 
     if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "No existe" });

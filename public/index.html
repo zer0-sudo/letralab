@@ -70,13 +70,18 @@
     <section id="view-top" class="view" hidden>
       <div class="row-head">
         <h2>Tus más escuchadas</h2>
-        <select id="top-range">
-          <option value="short_term">Últimas 4 semanas</option>
+        <div class="top-filters">
+          <label class="check"><input type="checkbox" id="only-en" checked> Solo en inglés</label>
+          <select id="top-range">
+          <option value="week">Última semana</option>
+          <option value="short_term" selected>Últimas 4 semanas</option>
           <option value="medium_term">Últimos 6 meses</option>
           <option value="long_term">Último año</option>
-        </select>
+          </select>
+        </div>
       </div>
       <p class="hint">Aprendes más rápido con canciones que ya te gustan y repites mucho: empieza por las de arriba.</p>
+      <p id="top-filter-info" class="hint filter-info"></p>
       <ol id="top-list" class="track-list"></ol>
     </section>
 

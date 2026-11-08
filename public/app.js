@@ -592,23 +592,103 @@ async function openWord(word, lineIndex) {
 }
 
 // ---------------- Más escuchadas ----------------
+// Guarda en el PC las últimas reproducciones de Spotify (la API solo da 50) y devuelve las
+// de los últimos `days` días.
+async function syncPlays(days = 7) {
+  const data = await spotify("/me/player/recently-played?limit=50");
+  const plays = (data?.items || []).filter((p) => p.track?.id).map((p) => ({ played_at: p.played_at, song: toSong(p.track) }));
+  return api("/api/plays", { plays, days });
+}
+
+async function weekTop() {
+  const plays = await syncPlays(7);
+  const byId = new Map();
+  for (const { played_at, song } of plays) {
+    const e = byId.get(song.id) || { song, count: 0, last: "" };
+    e.count++;
+    if (played_at > e.last) e.last = played_at;
+    byId.set(song.id, e);
+  }
+  return [...byId.values()]
+    .sort((a, b) => b.count - a.count || b.last.localeCompare(a.last))
+    .map((e) => ({ ...e.song, plays: e.count }));
+}
+
+const top = { songs: [], lang: {}, checking: false };
+
 async function loadTop() {
   const range = $("#top-range").value;
+  store.set("top_range", range);
   $("#top-list").innerHTML = `<li class="status">Cargando…</li>`;
   try {
-    const data = await spotify(`/me/top/tracks?limit=50&time_range=${range}`);
-    const songs = data.items.map(toSong);
-    $("#top-list").innerHTML = songs.map((s, i) => `
+    top.songs = range === "week"
+      ? await weekTop()
+      : (await spotify(`/me/top/tracks?limit=50&time_range=${range}`)).items.map(toSong);
+    renderTop();
+    // Idioma: de a 10 canciones, para que la lista se vaya filtrando mientras revisa.
+    const pending = top.songs.filter((s) => !top.lang[s.id]);
+    top.checking = pending.length > 0;
+    renderTop();
+    for (let i = 0; i < pending.length; i += 10) {
+      const chunk = pending.slice(i, i + 10);
+      const res = await api("/api/lang", {
+        songs: chunk.map((s) => ({ id: s.id, track: s.name, artist: s.mainArtist, album: s.album, duration: s.duration })),
+      });
+      Object.assign(top.lang, res);
+      if ($("#top-range").value !== range) return; // cambió de rango mientras tanto
+      renderTop();
+    }
+    // Las que quedaron sin letra se preguntan otra vez al final: ahora el servidor ya conoce
+    // las demás canciones de esos artistas y puede deducir el idioma.
+    const unknown = top.songs.filter((s) => top.lang[s.id]?.lang === "unknown");
+    if (unknown.length) {
+      Object.assign(top.lang, await api("/api/lang", {
+        songs: unknown.map((s) => ({ id: s.id, track: s.name, artist: s.mainArtist, album: s.album, duration: s.duration })),
+      }));
+    }
+    top.checking = false;
+    renderTop();
+  } catch (e) {
+    $("#top-list").innerHTML = `<li class="error">${escapeHtml(e.message)}</li>`;
+  }
+}
+
+const LANG_TAG = { es: "Español", instrumental: "Instrumental", unknown: "Sin letra" };
+
+function renderTop() {
+  const onlyEn = $("#only-en").checked;
+  // Con el filtro se quitan las que están en español (o casi todo en español) y las instrumentales.
+  const hide = (s) => onlyEn && ["es", "instrumental"].includes(top.lang[s.id]?.lang);
+  const songs = top.songs.filter((s) => !hide(s));
+  const hidden = top.songs.length - songs.length;
+  const week = $("#top-range").value === "week";
+  $("#top-filter-info").textContent = [
+    top.checking ? "Revisando el idioma de las letras…" : "",
+    hidden ? `${hidden} ocultas por estar en español o sin voz.` : "",
+  ].filter(Boolean).join(" ");
+
+  if (!songs.length) {
+    $("#top-list").innerHTML = `<li class="status">${week
+      ? "Aún no hay reproducciones de esta semana. Escucha algo en Spotify y vuelve."
+      : "No hay canciones para mostrar."}</li>`;
+    return;
+  }
+  $("#top-list").innerHTML = songs.map((s, i) => {
+    const l = top.lang[s.id]?.lang;
+    const tag = LANG_TAG[l] ? `<span class="lang-tag lang-${l}">${LANG_TAG[l]}</span>` : "";
+    const plays = s.plays ? ` · ${s.plays} ${s.plays === 1 ? "vez" : "veces"}` : "";
+    return `
       <li>
         <span class="n">${i + 1}</span>
         <img src="${s.cover}" alt="">
-        <div><div class="track">${escapeHtml(s.name)}</div><div class="artist">${escapeHtml(s.artist)}</div></div>
+        <div><div class="track">${escapeHtml(s.name)} ${tag}</div><div class="artist">${escapeHtml(s.artist)}${plays}</div></div>
         <div class="actions">
           <button data-act="lyrics" data-i="${i}">Ver letra</button>
           <button data-act="play" data-i="${i}" title="Reproducir en Spotify y ver la letra">▶ Escuchar</button>
         </div>
-      </li>`).join("");
-    $("#top-list").onclick = async (ev) => {
+      </li>`;
+  }).join("");
+  $("#top-list").onclick = async (ev) => {
       const btn = ev.target.closest("button");
       if (!btn) return;
       const i = Number(btn.dataset.i);
@@ -618,7 +698,7 @@ async function loadTop() {
         btn.disabled = true;
         btn.textContent = "Abriendo…";
         try {
-          // Toda la lista como cola: al terminar sigue con la siguiente más escuchada.
+          // La lista visible como cola: al terminar sigue con la siguiente (ya filtrada).
           const ok = await playOnSpotify({ uris: songs.map((s) => s.uri), offset: { position: i } });
           showView("now");
           loadSong(song);
@@ -631,10 +711,7 @@ async function loadTop() {
           btn.textContent = "▶ Escuchar";
         }
       }
-    };
-  } catch (e) {
-    $("#top-list").innerHTML = `<li class="error">${escapeHtml(e.message)}</li>`;
-  }
+  };
 }
 
 // ---------------- Vocabulario y repaso (repetición espaciada tipo SM-2) ----------------
@@ -778,7 +855,11 @@ async function main() {
   $("#login").onclick = login;
   $("#tabs").onclick = (ev) => { const b = ev.target.closest("button"); if (b) showView(b.dataset.view); };
   $("#modes").onclick = (ev) => { const b = ev.target.closest("button"); if (b) setMode(b.dataset.mode); };
+  const savedRange = store.get("top_range");
+  if (savedRange && $(`#top-range option[value="${savedRange}"]`)) $("#top-range").value = savedRange;
   $("#top-range").onchange = loadTop;
+  $("#only-en").checked = store.get("only_en") ?? true;
+  $("#only-en").onchange = () => { store.set("only_en", $("#only-en").checked); renderTop(); };
   $("#font-up").onclick = () => setScale(0.1);
   $("#font-down").onclick = () => setScale(-0.1);
   $("#word-close").onclick = () => { $("#word-pop").hidden = true; };
@@ -810,6 +891,10 @@ async function main() {
   showView("now");
   poll();
   setInterval(poll, 3000);
+  // Ir guardando el historial para "Última semana" (Spotify solo recuerda las últimas 50).
+  const keepHistory = () => syncPlays().catch((e) => console.warn("historial", e));
+  keepHistory();
+  setInterval(keepHistory, 30 * 60 * 1000);
   requestAnimationFrame(tick);
 }
 
