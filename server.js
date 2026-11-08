@@ -28,7 +28,8 @@ loadEnv();
 
 const PORT = Number(process.env.PORT || 8888);
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// En el plan gratuito de Gemini solo están los modelos Flash-Lite.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-haiku-5-5";
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || "";

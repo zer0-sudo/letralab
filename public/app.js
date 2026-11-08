@@ -141,6 +141,7 @@ async function api(pathname, body, method) {
 
 // ---------------- Vistas ----------------
 function showView(name) {
+  $("#word-pop").hidden = true;
   for (const v of document.querySelectorAll(".view")) v.hidden = v.id !== `view-${name}`;
   for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("active", b.dataset.view === name);
   if (name === "top") loadTop();
@@ -194,9 +195,18 @@ async function poll() {
 
 function renderPlayer() {
   const s = state.playing;
-  $("#track-name").textContent = s ? s.name : "Nada sonando";
-  $("#track-artist").textContent = s ? s.artist : "Pon una canción en Spotify";
-  $("#cover").src = s?.cover || "";
+  const viewing = state.song && state.song.id !== s?.id ? state.song : null;
+  if (viewing) {
+    // Viendo la letra de una canción que no está sonando.
+    $("#track-name").textContent = viewing.name;
+    $("#track-artist").textContent = `${viewing.artist} · no está sonando`;
+  } else {
+    $("#track-name").textContent = s ? s.name : "Nada sonando";
+    $("#track-artist").textContent = s ? s.artist : "Pon una canción en Spotify";
+  }
+  const cover = (viewing || s)?.cover || "";
+  $("#cover").src = cover;
+  $("#cover").style.visibility = cover ? "visible" : "hidden";
 }
 
 function currentSeconds() {
@@ -238,12 +248,7 @@ async function loadSong(song) {
   $("#lyrics").innerHTML = "";
   $("#summary").hidden = true;
   $("#lyrics-status").textContent = "Buscando la letra…";
-  if (song.id !== state.playing?.id) {
-    // Viendo una canción que no está sonando: mostrar su info arriba.
-    $("#track-name").textContent = song.name;
-    $("#track-artist").textContent = `${song.artist} · no está sonando`;
-    $("#cover").src = song.cover;
-  }
+  renderPlayer();
 
   let lyr;
   try {
