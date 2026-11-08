@@ -61,7 +61,11 @@
         <button data-mode="cloze"><b>3 · Huecos</b><span>Escribe la palabra que falta mientras escuchas</span></button>
         <button data-mode="ear"><b>4 · Oído</b><span>La letra aparece cuando ya se cantó</span></button>
       </div>
-      <div id="mode-help" class="mode-help"></div>
+      <div class="help-row">
+        <div id="mode-help" class="mode-help"></div>
+        <button id="shortcuts-open" class="shortcuts-btn" title="Atajos de teclado (?)">⌨ Atajos</button>
+      </div>
+      <div id="paused-badge" class="paused-badge" hidden>⏸ En pausa · Espacio para seguir · ← → para moverte entre líneas</div>
 
       <div id="summary" class="summary" hidden></div>
       <div id="lyrics-status" class="status"></div>
@@ -107,6 +111,16 @@
   <div id="word-pop" class="word-pop" hidden>
     <button class="close" id="word-close" aria-label="Cerrar">✕</button>
     <div id="word-body"></div>
+  </div>
+
+  <!-- Atajos de teclado -->
+  <div id="shortcuts" class="shortcuts" hidden>
+    <div class="shortcuts-card" role="dialog" aria-label="Atajos de teclado">
+      <button class="close" id="shortcuts-close" aria-label="Cerrar">✕</button>
+      <h2>Atajos de teclado</h2>
+      <dl id="shortcuts-list"></dl>
+      <p class="hint">Funcionan en «Sonando». Mientras escribes en un hueco no se activan: pulsa Esc para salir del hueco.</p>
+    </div>
   </div>
 
   <script type="module" src="/app.js"></script>

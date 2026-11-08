@@ -284,7 +284,9 @@ async function poll() {
       return;
     }
     state.playing = toSong(data.item);
-    state.isPlaying = data.is_playing;
+    // Justo después de pausar o reanudar desde aquí, Spotify puede tardar en enterarse:
+    // se respeta lo que pidió el usuario en vez de lo que diga la consulta.
+    if (performance.now() > (state.toggledUntil || 0)) state.isPlaying = data.is_playing;
     if (performance.now() > state.seekingUntil) {
       state.progressMs = data.progress_ms;
       state.progressAt = performance.now();
@@ -341,6 +343,7 @@ function tick() {
     const t = currentSeconds();
     $("#progress-bar").style.width = `${Math.min(100, (t / state.playing.duration) * 100)}%`;
     $("#lyrics").classList.toggle("live", !!isSyncedPlaying());
+    renderPauseState();
     if (isSyncedPlaying()) {
       // Repetir línea: al terminar, vuelve a su inicio.
       if (state.loop != null && state.isPlaying && performance.now() > state.seekingUntil) {
@@ -554,6 +557,126 @@ function onLoopLine(i) {
   state.loop = state.loop === i ? null : i;
   for (const li of $("#lyrics").children) li.classList.toggle("looping", Number(li.dataset.i) === state.loop);
   if (state.loop != null) seekTo(state.lines[i].time - 0.25);
+}
+
+// ---------------- Reproducción y atajos de teclado ----------------
+// Pausar congela la letra al instante (no espera a Spotify), para alcanzar a leer.
+async function togglePlay() {
+  const now = performance.now();
+  state.toggledUntil = now + 2500;
+  if (state.isPlaying) {
+    state.progressMs = currentSeconds() * 1000;
+    state.progressAt = now;
+    state.isPlaying = false;
+    renderPauseState();
+    try { await spotify("/me/player/pause", { method: "PUT" }); } catch (e) { console.warn(e); }
+    return;
+  }
+  state.progressAt = now;
+  state.isPlaying = true;
+  renderPauseState();
+  try {
+    await spotify("/me/player/play", { method: "PUT" });
+  } catch {
+    // Sin dispositivo activo: el camino largo (transferir y reintentar).
+    try { await playOnSpotify(); } catch (e) { state.isPlaying = false; renderPauseState(); toast(e.message); }
+  }
+  setTimeout(poll, 600);
+}
+
+function renderPauseState() {
+  const paused = !!isSyncedPlaying() && !state.isPlaying;
+  $("#lyrics").classList.toggle("paused", paused);
+  $("#paused-badge").hidden = !paused;
+}
+
+// Índices de las líneas con texto (las vacías no cuentan al navegar).
+const textLines = () => state.lines.map((l, i) => (l.text ? i : -1)).filter((i) => i >= 0);
+
+function goLine(delta) {
+  if (!isSyncedPlaying()) return toast("Esta canción no está sonando en Spotify.");
+  const list = textLines();
+  const cur = list.indexOf(state.activeIndex);
+  let target;
+  if (cur === -1) target = delta > 0 ? list.find((i) => i > state.activeIndex) ?? list[0] : list.findLast((i) => i < state.activeIndex) ?? list[0];
+  else target = list[Math.min(list.length - 1, Math.max(0, cur + delta))];
+  if (target == null) return;
+  if (state.loop != null) onLoopLine(state.loop); // navegar quita el "repetir línea"
+  seekTo(state.lines[target].time - 0.15);
+  setActive(target);
+}
+
+function restartLine() {
+  if (!isSyncedPlaying() || state.activeIndex < 0) return;
+  seekTo(state.lines[state.activeIndex].time - 0.25);
+}
+
+function jump(seconds) {
+  if (!state.playing) return;
+  seekTo(Math.min(state.playing.duration - 1, Math.max(0, currentSeconds() + seconds)));
+}
+
+function revealActive() {
+  const i = state.activeIndex;
+  const li = $("#lyrics").children[i];
+  if (!li) return;
+  state.revealed.add(i);
+  li.classList.add("revealed");
+}
+
+const SHORTCUTS = [
+  ["Espacio", "Pausar / seguir (la letra se congela para que alcances a leer)"],
+  ["← / →", "Línea anterior / siguiente"],
+  ["↑", "Volver al inicio de la línea actual"],
+  ["Shift + ← / →", "Retroceder / adelantar 5 segundos"],
+  ["R", "Repetir la línea actual en bucle (otra vez R para quitarlo)"],
+  ["T", "Destapar la línea actual (en Practicar y Oído)"],
+  ["P", "Pronunciar la línea actual"],
+  ["1 · 2 · 3 · 4", "Cambiar de modo"],
+  ["N / B", "Canción siguiente / anterior"],
+  ["?", "Ver u ocultar esta ayuda"],
+  ["Esc", "Cerrar ventanas o salir de un hueco"],
+];
+
+function toggleShortcuts(force) {
+  const el = $("#shortcuts");
+  el.hidden = force != null ? !force : !el.hidden;
+}
+
+function onKey(ev) {
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const typing = ev.target.closest?.("input, textarea, select, [contenteditable]");
+  if (ev.key === "Escape") {
+    if (typing) ev.target.blur();
+    $("#word-pop").hidden = true;
+    toggleShortcuts(false);
+    return;
+  }
+  if (typing) return;
+  if (ev.key === "?") { ev.preventDefault(); return toggleShortcuts(); }
+  // El resto solo en "Sonando".
+  if ($("#view-now").hidden) return;
+  const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+  const actions = {
+    " ": togglePlay,
+    k: togglePlay,
+    ArrowLeft: () => (ev.shiftKey ? jump(-5) : goLine(-1)),
+    ArrowRight: () => (ev.shiftKey ? jump(5) : goLine(1)),
+    ArrowUp: restartLine,
+    r: () => state.activeIndex >= 0 && onLoopLine(state.activeIndex),
+    t: revealActive,
+    p: () => state.lines[state.activeIndex]?.text && say(state.lines[state.activeIndex].text, 0.85),
+    1: () => setMode("understand"),
+    2: () => setMode("practice"),
+    3: () => setMode("cloze"),
+    4: () => setMode("ear"),
+    n: () => $("#btn-next").click(),
+    b: () => $("#btn-prev").click(),
+  };
+  const fn = actions[k];
+  if (!fn) return;
+  ev.preventDefault(); // que el espacio no haga scroll ni pulse botones
+  fn();
 }
 
 // ---------------- Palabras ----------------
@@ -876,10 +999,12 @@ async function main() {
   };
   $("#btn-prev").onclick = control("POST", "/me/player/previous");
   $("#btn-next").onclick = control("POST", "/me/player/next");
-  $("#btn-play").onclick = async () => {
-    if (state.isPlaying) return control("PUT", "/me/player/pause")();
-    try { await playOnSpotify(); setTimeout(poll, 300); } catch (e) { alert(e.message); }
-  };
+  $("#btn-play").onclick = togglePlay;
+  document.addEventListener("keydown", onKey);
+  $("#shortcuts-list").innerHTML = SHORTCUTS.map(([k, d]) => `<dt>${k.split(" ").map((p) => (/^[·/+]$/.test(p) ? p : `<kbd>${p}</kbd>`)).join(" ")}</dt><dd>${d}</dd>`).join("");
+  $("#shortcuts-open").onclick = () => toggleShortcuts(true);
+  $("#shortcuts-close").onclick = () => toggleShortcuts(false);
+  $("#shortcuts").onclick = (ev) => { if (ev.target.id === "shortcuts") toggleShortcuts(false); };
 
   if (location.pathname === "/callback") {
     try { await handleCallback(); } catch (e) { alert(e.message); }
