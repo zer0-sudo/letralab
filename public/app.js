@@ -902,3 +902,6 @@ async function main() {
 }
 
 main();
+
+// Para poder instalar LetraLab como app (ventana propia, ícono en la barra de tareas).
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
