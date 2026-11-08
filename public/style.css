@@ -7,6 +7,7 @@
   --accent: #1ed760;
   --accent-ink: #062b14;
   --note: #f7cd61;
+  --es: #9ed3ff;
   --good: #3ddc84;
   --bad: #ff7272;
   --border: #2c3240;
@@ -84,28 +85,42 @@ main { max-width: 980px; margin: 0 auto; padding: 1.4rem; }
 .status { color: var(--muted); margin: 1rem 0; text-align: center; }
 .cloze-score { text-align: center; font-weight: 700; color: var(--good); margin: .5rem 0; }
 
-/* Letra */
-.lyrics { list-style: none; padding: 0; margin: 1rem 0 45vh; }
-.lyrics li { position: relative; padding: .6rem 3.2rem .6rem .9rem; border-radius: 12px; transition: background .2s, opacity .2s; opacity: .6; }
-.lyrics.unsynced li, .lyrics li.active { opacity: 1; }
-.lyrics li.active { background: var(--panel-2); }
-.lyrics li.gap { min-height: 1rem; padding: 0; }
-.en { font-size: 1.65rem; font-weight: 700; line-height: 1.35; }
+/* Letra
+   Inglés en blanco y español en azul claro, para distinguir los idiomas de un vistazo.
+   Mientras suena la canción ("live") solo la línea actual muestra traducción y nota;
+   las demás quedan apagadas. Sin reproducción se ve todo, pero las notas solo al pasar el ratón. */
+.lyrics { list-style: none; padding: 0; margin: 1.2rem 0 45vh; }
+.lyrics li {
+  position: relative; padding: .75rem 3.6rem .75rem 1.2rem; margin-bottom: .45rem;
+  border-radius: 14px; border-left: 4px solid transparent;
+  transition: background .25s, opacity .25s;
+}
+.lyrics.live li { opacity: .38; }
+.lyrics.live li:hover { opacity: .75; }
+.lyrics li.active { opacity: 1 !important; background: var(--panel-2); border-left-color: var(--accent); padding-top: 1rem; padding-bottom: 1rem; }
+.lyrics li.gap { min-height: 1.2rem; padding: 0; margin: 0; border: 0; }
+.en { font-size: 1.5rem; font-weight: 600; line-height: 1.35; color: var(--text); letter-spacing: .005em; }
+.lyrics li.active .en { font-size: 1.95rem; font-weight: 800; }
 .en .w { cursor: pointer; border-radius: 5px; }
 .en .w:hover { background: #303849; }
 .en .w.known { text-decoration: underline dotted var(--accent); text-underline-offset: .25em; }
-.es { color: var(--muted); font-size: 1.12rem; margin-top: .15rem; }
-.note { color: var(--note); font-size: 1rem; margin-top: .3rem; }
+.es { color: var(--es); font-size: 1.15rem; font-weight: 500; margin-top: .3rem; line-height: 1.4; }
+.lyrics li.active .es { font-size: 1.35rem; }
+.lyrics.live li:not(.active):not(:hover) .es { display: none; }
+.note { display: none; color: var(--note); font-size: 1rem; margin-top: .45rem; padding-top: .45rem; border-top: 1px dashed var(--border); }
 .note::before { content: "💡 "; }
-.line-tools { position: absolute; top: .55rem; right: .5rem; display: flex; flex-direction: column; gap: .25rem; opacity: 0; transition: opacity .15s; }
+.lyrics li.active .note, .lyrics li:hover .note { display: block; }
+.lyrics li.has-note:not(.active):not(:hover) .en::after { content: " 💡"; font-size: .5em; vertical-align: middle; opacity: .7; }
+.line-tools { position: absolute; top: .6rem; right: .55rem; display: flex; flex-direction: column; gap: .3rem; opacity: 0; transition: opacity .15s; }
 .lyrics li:hover .line-tools, .lyrics li.active .line-tools, .lyrics li.looping .line-tools { opacity: 1; }
 .line-tools button { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; width: 2.1rem; height: 2.1rem; font-size: .9rem; }
 .lyrics li.looping { outline: 2px solid var(--note); }
 .lyrics li.looping .loop-btn { background: var(--note); color: #2a2000; }
 
 /* Modo practicar: traducción oculta */
-.mode-practice .es, .mode-practice .note { filter: blur(7px); cursor: pointer; user-select: none; }
-.mode-practice li.revealed .es, .mode-practice li.revealed .note { filter: none; }
+.mode-practice .es { filter: blur(7px); cursor: pointer; user-select: none; }
+.mode-practice li:not(.revealed) .note { display: none !important; }
+.mode-practice li.revealed .es { filter: none; }
 
 /* Modo oído: la letra aparece después de cantada */
 .mode-ear .es, .mode-ear .note { display: none; }

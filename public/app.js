@@ -338,6 +338,7 @@ function tick() {
   if (state.playing) {
     const t = currentSeconds();
     $("#progress-bar").style.width = `${Math.min(100, (t / state.playing.duration) * 100)}%`;
+    $("#lyrics").classList.toggle("live", !!isSyncedPlaying());
     if (isSyncedPlaying()) {
       // Repetir línea: al terminar, vuelve a su inicio.
       if (state.loop != null && state.isPlaying && performance.now() > state.seekingUntil) {
@@ -457,7 +458,7 @@ function renderLyrics() {
       }
       return html;
     }).join("");
-    const cls = [state.revealed.has(i) ? "revealed" : "", state.loop === i ? "looping" : "", i < state.activeIndex ? "sung" : ""].join(" ");
+    const cls = [l.note ? "has-note" : "", state.revealed.has(i) ? "revealed" : "", state.loop === i ? "looping" : "", i < state.activeIndex ? "sung" : ""].join(" ");
     return `<li data-i="${i}" class="${cls}">
       <div class="en">${words}</div>
       ${l.translation ? `<div class="es">${escapeHtml(l.translation)}</div>` : ""}
