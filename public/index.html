@@ -12,11 +12,17 @@
     <div class="brand">🎧 LetraLab</div>
     <nav class="tabs" id="tabs" hidden>
       <button data-view="now" class="active">Sonando</button>
-      <button data-view="top">Mis más escuchadas</button>
+      <button data-view="top">Más escuchadas</button>
       <button data-view="vocab">Vocabulario <span id="vocab-count" class="pill">0</span></button>
       <button data-view="review">Repasar <span id="due-count" class="pill">0</span></button>
     </nav>
-    <div class="ai-status" id="ai-status"></div>
+    <div class="top-right">
+      <div class="streak" id="streak" hidden></div>
+      <div class="font-size" title="Tamaño del texto">
+        <button id="font-down" aria-label="Texto más pequeño">A−</button>
+        <button id="font-up" aria-label="Texto más grande">A+</button>
+      </div>
+    </div>
   </header>
 
   <main>
@@ -43,11 +49,20 @@
           <button id="btn-prev" title="Anterior">⏮</button>
           <button id="btn-play" title="Pausar / reproducir">⏯</button>
           <button id="btn-next" title="Siguiente">⏭</button>
-          <label class="toggle" title="Mostrar traducción"><input type="checkbox" id="show-translation" checked> Traducción</label>
         </div>
       </div>
+
+      <div class="modes" id="modes" role="tablist" aria-label="Modo de estudio">
+        <button data-mode="understand" class="active"><b>1 · Entender</b><span>Letra con traducción y notas</span></button>
+        <button data-mode="practice"><b>2 · Practicar</b><span>Traducción oculta: adivina y toca para ver</span></button>
+        <button data-mode="cloze"><b>3 · Huecos</b><span>Escribe la palabra que falta mientras escuchas</span></button>
+        <button data-mode="ear"><b>4 · Oído</b><span>La letra aparece cuando ya se cantó</span></button>
+      </div>
+      <div id="mode-help" class="mode-help"></div>
+
       <div id="summary" class="summary" hidden></div>
       <div id="lyrics-status" class="status"></div>
+      <div id="cloze-score" class="cloze-score" hidden></div>
       <ol id="lyrics" class="lyrics"></ol>
     </section>
 
@@ -61,12 +76,14 @@
           <option value="long_term">Último año</option>
         </select>
       </div>
+      <p class="hint">Aprendes más rápido con canciones que ya te gustan y repites mucho: empieza por las de arriba.</p>
       <ol id="top-list" class="track-list"></ol>
     </section>
 
     <!-- Vocabulario -->
     <section id="view-vocab" class="view" hidden>
       <h2>Tu vocabulario</h2>
+      <div id="vocab-stats" class="vocab-stats"></div>
       <p class="hint">Toca cualquier palabra de una letra para guardarla aquí.</p>
       <ul id="vocab-list" class="vocab-list"></ul>
     </section>
@@ -80,7 +97,7 @@
 
   <!-- Ventana de una palabra -->
   <div id="word-pop" class="word-pop" hidden>
-    <button class="close" id="word-close">✕</button>
+    <button class="close" id="word-close" aria-label="Cerrar">✕</button>
     <div id="word-body"></div>
   </div>
 

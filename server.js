@@ -48,11 +48,12 @@ function writeJSON(file, value) {
   fs.writeFileSync(file, JSON.stringify(value, null, 2));
 }
 const VOCAB_FILE = path.join(DATA, "vocab.json");
+const STATS_FILE = path.join(DATA, "stats.json");
 
 // ---------- IA ----------
 class ProviderError extends Error {}
 
-async function askGemini(system, prompt) {
+async function askGemini(system, prompt, schema) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const res = await fetch(url, {
     method: "POST",
@@ -60,7 +61,11 @@ async function askGemini(system, prompt) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json" },
+      generationConfig: {
+        responseMimeType: "application/json",
+        ...(schema ? { responseSchema: schema } : {}),
+        maxOutputTokens: 32768,
+      },
     }),
   });
   if (!res.ok) {
@@ -68,9 +73,57 @@ async function askGemini(system, prompt) {
     throw new ProviderError(`Gemini ${res.status}${res.status === 429 ? " (límite alcanzado)" : ""}: ${body.slice(0, 200)}`);
   }
   const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
-  return parseJSON(text, "Gemini");
+  const candidate = data.candidates?.[0];
+  const text = candidate?.content?.parts?.map((p) => p.text || "").join("") || "";
+  try {
+    return parseJSON(text, "Gemini");
+  } catch (error) {
+    console.warn(`[IA] Gemini terminó con ${candidate?.finishReason}; final de la respuesta: …${text.slice(-200)}`);
+    throw error;
+  }
 }
+
+// Gemini a veces devuelve un JSON roto: se reintenta una vez antes de pasar a Claude.
+async function askGeminiWithRetry(system, prompt, schema) {
+  try {
+    return await askGemini(system, prompt, schema);
+  } catch (error) {
+    if (!(error instanceof ProviderError) || !/JSON/.test(error.message)) throw error;
+    return askGemini(system, prompt, schema);
+  }
+}
+
+// Esquemas de respuesta (formato OpenAPI que usa Gemini).
+const EXPLAIN_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    summary: { type: "STRING" },
+    lines: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          i: { type: "INTEGER" },
+          translation: { type: "STRING" },
+          note: { type: "STRING" },
+          key: { type: "STRING" },
+        },
+        required: ["i", "translation", "note", "key"],
+      },
+    },
+  },
+  required: ["summary", "lines"],
+};
+const DEFINE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    term: { type: "STRING" },
+    meaning: { type: "STRING" },
+    explanation: { type: "STRING" },
+    pronunciation: { type: "STRING" },
+  },
+  required: ["term", "meaning", "explanation", "pronunciation"],
+};
 
 async function askClaude(system, prompt) {
   try {
@@ -104,9 +157,9 @@ function parseJSON(text, who) {
 }
 
 // Gemini primero; si no hay clave, falla o llega al límite, Claude.
-async function ask(system, prompt) {
+async function ask(system, prompt, schema) {
   const providers = [];
-  if (GEMINI_KEY) providers.push(["gemini", askGemini]);
+  if (GEMINI_KEY) providers.push(["gemini", (s, p) => askGeminiWithRetry(s, p, schema)]);
   if (claude) providers.push(["claude", askClaude]);
   if (!providers.length) throw new ProviderError("No hay ninguna clave de IA en el archivo .env");
   const errors = [];
@@ -125,9 +178,10 @@ const EXPLAIN_SYSTEM = `Eres un profesor de inglés para un hispanohablante de C
 Recibes la letra de una canción, una línea por índice. Para cada línea devuelve:
 - "translation": traducción natural al español de Colombia (que suene como lo diría alguien de verdad, no palabra por palabra).
 - "note": explicación corta (1-2 frases) SOLO si la línea tiene slang, una frase hecha, una metáfora, un doble sentido, una contracción informal (gonna, ain't, 'cause...) o gramática que valga la pena aprender. Si no, cadena vacía.
+- "key": la palabra de la línea (copiada tal cual aparece, una sola palabra) más útil para que la aprenda: prioriza verbos, sustantivos y adjetivos frecuentes en inglés real o que formen parte de una expresión; nunca artículos, pronombres ni preposiciones sueltas. Cadena vacía si la línea no tiene ninguna útil (p. ej. "oh oh oh").
 Además "summary": de qué trata la canción en 2-3 frases.
 Responde únicamente con JSON con esta forma exacta:
-{"summary": "...", "lines": [{"i": 0, "translation": "...", "note": "..."}]}
+{"summary": "...", "lines": [{"i": 0, "translation": "...", "note": "...", "key": "..."}]}
 Incluye todas las líneas, en el mismo orden y con el mismo índice. Las líneas vacías devuélvelas con traducción vacía.`;
 
 const DEFINE_SYSTEM = `Eres un profesor de inglés para un hispanohablante de Colombia. Te dan una palabra o expresión en inglés y la línea de canción donde aparece.
@@ -210,7 +264,7 @@ const server = http.createServer(async (req, res) => {
       const cached = readJSON(file, null);
       if (cached) return send(res, 200, { ...cached, cached: true });
       const numbered = lines.map((t, i) => `${i}: ${t}`).join("\n");
-      const { provider, result } = await ask(EXPLAIN_SYSTEM, `Canción: "${track}" de ${artist}\n\nLetra:\n${numbered}`);
+      const { provider, result } = await ask(EXPLAIN_SYSTEM, `Canción: "${track}" de ${artist}\n\nLetra:\n${numbered}`, EXPLAIN_SCHEMA);
       const saved = { provider, summary: result.summary || "", lines: result.lines || [] };
       writeJSON(file, saved);
       return send(res, 200, saved);
@@ -221,7 +275,7 @@ const server = http.createServer(async (req, res) => {
       const file = path.join(DATA, "words", keyOf(`${word}|${line}`.toLowerCase()) + ".json");
       const cached = readJSON(file, null);
       if (cached) return send(res, 200, cached);
-      const { provider, result } = await ask(DEFINE_SYSTEM, `Palabra o expresión: "${word}"\nLínea: "${line}"`);
+      const { provider, result } = await ask(DEFINE_SYSTEM, `Palabra o expresión: "${word}"\nLínea: "${line}"`, DEFINE_SCHEMA);
       const saved = { provider, ...result };
       writeJSON(file, saved);
       return send(res, 200, saved);
@@ -252,6 +306,22 @@ const server = http.createServer(async (req, res) => {
         vocab = vocab.map((v) => (v.id === vocabItem[1] ? { ...v, ...patch } : v));
         writeJSON(VOCAB_FILE, vocab);
         return send(res, 200, { ok: true });
+      }
+    }
+
+    // Actividad diaria para la racha: { "2026-11-07": { reviews, added, songs, cloze } }
+    if (url.pathname === "/api/stats") {
+      const stats = readJSON(STATS_FILE, {});
+      if (req.method === "GET") return send(res, 200, stats);
+      if (req.method === "POST") {
+        const { type, day } = await readBody(req);
+        if (!["reviews", "added", "songs", "cloze"].includes(type) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+          return send(res, 400, { error: "Datos inválidos" });
+        }
+        stats[day] ??= {};
+        stats[day][type] = (stats[day][type] || 0) + 1;
+        writeJSON(STATS_FILE, stats);
+        return send(res, 200, stats);
       }
     }
 
