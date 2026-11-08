@@ -358,17 +358,30 @@ async function loadTop() {
       if (btn.dataset.act === "lyrics") { showView("now"); loadSong(song); }
       if (btn.dataset.act === "play") {
         try {
-          await spotify("/me/player/play", { method: "PUT", body: JSON.stringify({ uris: [song.uri] }) });
+          await playOnSpotify({ uris: [song.uri] });
           showView("now");
           setTimeout(poll, 800);
         } catch (e) {
-          alert(e.status === 404 ? "Abre Spotify en algún dispositivo (PC o celular) y vuelve a intentarlo." : e.message);
+          alert(e.message);
         }
       }
     };
   } catch (e) {
     $("#top-list").innerHTML = `<li class="error">${escapeHtml(e.message)}</li>`;
   }
+}
+
+// Spotify solo acepta "play" si hay un dispositivo activo. Si la app está
+// abierta pero en pausa no cuenta como activa, así que elegimos uno nosotros.
+async function playOnSpotify(body) {
+  const { devices = [] } = (await spotify("/me/player/devices")) || {};
+  const usable = devices.filter((d) => !d.is_restricted);
+  const device = usable.find((d) => d.is_active) || usable.find((d) => d.type === "Computer") || usable[0];
+  if (!device) {
+    throw new Error("No encontré ningún Spotify abierto. Abre la app de Spotify en tu PC o celular y vuelve a intentarlo.");
+  }
+  const query = device.is_active ? "" : `?device_id=${encodeURIComponent(device.id)}`;
+  await spotify(`/me/player/play${query}`, { method: "PUT", ...(body ? { body: JSON.stringify(body) } : {}) });
 }
 
 // ---------------- Vocabulario y repaso ----------------
@@ -465,7 +478,8 @@ async function main() {
   $("#btn-prev").onclick = control("POST", "/me/player/previous");
   $("#btn-next").onclick = control("POST", "/me/player/next");
   $("#btn-play").onclick = async () => {
-    await control("PUT", state.isPlaying ? "/me/player/pause" : "/me/player/play")();
+    if (state.isPlaying) return control("PUT", "/me/player/pause")();
+    try { await playOnSpotify(); setTimeout(poll, 600); } catch (e) { alert(e.message); }
   };
 
   if (location.pathname === "/callback") {
