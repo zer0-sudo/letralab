@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LetraLab</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">🎧 LetraLab</div>
+    <nav class="tabs" id="tabs" hidden>
+      <button data-view="now" class="active">Sonando</button>
+      <button data-view="top">Mis más escuchadas</button>
+      <button data-view="vocab">Vocabulario <span id="vocab-count" class="pill">0</span></button>
+      <button data-view="review">Repasar <span id="due-count" class="pill">0</span></button>
+    </nav>
+    <div class="ai-status" id="ai-status"></div>
+  </header>
+
+  <main>
+    <!-- Bienvenida / configuración -->
+    <section id="view-setup" class="view">
+      <div class="card setup">
+        <h1>Aprende inglés con tu música</h1>
+        <p>Conecta tu Spotify y LetraLab te muestra la letra de lo que suena, traducida y explicada línea por línea.</p>
+        <div id="setup-missing" class="warn" hidden></div>
+        <button id="login" class="primary">Conectar con Spotify</button>
+      </div>
+    </section>
+
+    <!-- Sonando ahora -->
+    <section id="view-now" class="view" hidden>
+      <div class="player" id="player">
+        <img id="cover" alt="">
+        <div class="meta">
+          <div id="track-name" class="track">Nada sonando</div>
+          <div id="track-artist" class="artist">Pon una canción en Spotify</div>
+          <div class="progress"><div id="progress-bar"></div></div>
+        </div>
+        <div class="controls">
+          <button id="btn-prev" title="Anterior">⏮</button>
+          <button id="btn-play" title="Pausar / reproducir">⏯</button>
+          <button id="btn-next" title="Siguiente">⏭</button>
+          <label class="toggle" title="Mostrar traducción"><input type="checkbox" id="show-translation" checked> Traducción</label>
+        </div>
+      </div>
+      <div id="summary" class="summary" hidden></div>
+      <div id="lyrics-status" class="status"></div>
+      <ol id="lyrics" class="lyrics"></ol>
+    </section>
+
+    <!-- Más escuchadas -->
+    <section id="view-top" class="view" hidden>
+      <div class="row-head">
+        <h2>Tus más escuchadas</h2>
+        <select id="top-range">
+          <option value="short_term">Últimas 4 semanas</option>
+          <option value="medium_term">Últimos 6 meses</option>
+          <option value="long_term">Último año</option>
+        </select>
+      </div>
+      <ol id="top-list" class="track-list"></ol>
+    </section>
+
+    <!-- Vocabulario -->
+    <section id="view-vocab" class="view" hidden>
+      <h2>Tu vocabulario</h2>
+      <p class="hint">Toca cualquier palabra de una letra para guardarla aquí.</p>
+      <ul id="vocab-list" class="vocab-list"></ul>
+    </section>
+
+    <!-- Repaso -->
+    <section id="view-review" class="view" hidden>
+      <h2>Repasar</h2>
+      <div id="review-card" class="card review"></div>
+    </section>
+  </main>
+
+  <!-- Ventana de una palabra -->
+  <div id="word-pop" class="word-pop" hidden>
+    <button class="close" id="word-close">✕</button>
+    <div id="word-body"></div>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

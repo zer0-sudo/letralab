@@ -1,0 +1,140 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --panel-2: #1f232c;
+  --text: #eef0f4;
+  --muted: #8b93a3;
+  --accent: #1ed760;
+  --accent-ink: #062b14;
+  --note: #f5c451;
+  --line-active: #ffffff;
+  --border: #2a2f3a;
+  --danger: #ff6b6b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+h1, h2 { margin: 0 0 .5rem; }
+
+.top {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding: .75rem 1.25rem;
+  background: rgba(15, 17, 21, .92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 700; font-size: 1.1rem; }
+.tabs { display: flex; gap: .25rem; flex-wrap: wrap; }
+.tabs button {
+  background: none; border: 0; padding: .4rem .8rem; border-radius: 999px; color: var(--muted);
+}
+.tabs button.active { background: var(--panel-2); color: var(--text); }
+.pill { font-size: .75rem; background: var(--border); border-radius: 999px; padding: 0 .45rem; margin-left: .2rem; }
+.ai-status { margin-left: auto; font-size: .8rem; color: var(--muted); }
+
+main { max-width: 860px; margin: 0 auto; padding: 1.25rem; }
+.view[hidden] { display: none; }
+
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; }
+.setup { text-align: center; margin-top: 10vh; }
+.setup p { color: var(--muted); }
+.warn { background: #3a2a10; color: var(--note); border-radius: 10px; padding: .75rem; margin: 1rem 0; text-align: left; font-size: .9rem; }
+.warn code { color: var(--text); }
+.primary {
+  background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 999px;
+  padding: .7rem 1.4rem; font-weight: 700;
+}
+.primary:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Reproductor */
+.player {
+  display: grid; grid-template-columns: 72px 1fr auto; gap: 1rem; align-items: center;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: .9rem;
+  position: sticky; top: 64px; z-index: 5;
+}
+.player img { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: var(--panel-2); }
+.track { font-weight: 700; }
+.artist { color: var(--muted); font-size: .9rem; }
+.progress { height: 4px; background: var(--border); border-radius: 4px; margin-top: .5rem; overflow: hidden; }
+#progress-bar { height: 100%; width: 0; background: var(--accent); }
+.controls { display: flex; align-items: center; gap: .3rem; }
+.controls button { background: var(--panel-2); border: 0; border-radius: 999px; width: 36px; height: 36px; }
+.toggle { font-size: .8rem; color: var(--muted); margin-left: .4rem; display: flex; gap: .3rem; align-items: center; }
+
+.summary { margin: 1rem 0; padding: 1rem; background: var(--panel); border-radius: 12px; color: var(--muted); font-size: .95rem; }
+.status { color: var(--muted); margin: 1rem 0; text-align: center; }
+
+/* Letra */
+.lyrics { list-style: none; padding: 0; margin: 1rem 0 40vh; }
+.lyrics li { padding: .45rem .75rem; border-radius: 10px; transition: background .2s, opacity .2s; opacity: .55; }
+.lyrics.unsynced li, .lyrics li.active { opacity: 1; }
+.lyrics li.active { background: var(--panel-2); }
+.lyrics li.active .en { color: var(--line-active); }
+.lyrics li.gap { min-height: .8rem; }
+.en { font-size: 1.25rem; font-weight: 600; }
+.en .w { cursor: pointer; border-radius: 4px; }
+.en .w:hover { background: #2d3442; }
+.es { color: var(--muted); font-size: .95rem; }
+.hide-translation .es { display: none; }
+.note { color: var(--note); font-size: .88rem; margin-top: .2rem; }
+.note::before { content: "💡 "; }
+.lyrics li .time { display: none; }
+.lyrics li.seekable { cursor: default; }
+
+/* Listas */
+.row-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: .4rem; }
+.track-list { list-style: none; padding: 0; }
+.track-list li {
+  display: grid; grid-template-columns: 2rem 48px 1fr auto; gap: .8rem; align-items: center;
+  padding: .5rem; border-radius: 10px;
+}
+.track-list li:hover { background: var(--panel); }
+.track-list img { width: 48px; height: 48px; border-radius: 6px; }
+.track-list .n { color: var(--muted); text-align: right; }
+.track-list button { background: var(--panel-2); border: 0; border-radius: 999px; padding: .35rem .8rem; font-size: .85rem; }
+
+.hint { color: var(--muted); }
+.vocab-list { list-style: none; padding: 0; display: grid; gap: .6rem; }
+.vocab-list li { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: .8rem 1rem; position: relative; }
+.vocab-list .term { font-weight: 700; font-size: 1.1rem; }
+.vocab-list .meaning { color: var(--accent); }
+.vocab-list .ctx { color: var(--muted); font-size: .88rem; font-style: italic; }
+.vocab-list .del { position: absolute; top: .6rem; right: .6rem; background: none; border: 0; color: var(--muted); }
+
+/* Repaso */
+.review { text-align: center; }
+.review .q { font-size: 1.3rem; margin: 1rem 0; }
+.review .blank { border-bottom: 2px solid var(--accent); padding: 0 1.5rem; }
+.review .a { margin: 1rem 0; }
+.review .btns { display: flex; gap: .5rem; justify-content: center; flex-wrap: wrap; }
+.review .btns button { background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: .5rem 1rem; }
+
+/* Ventana de palabra */
+.word-pop {
+  position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 20; width: min(360px, calc(100vw - 2.5rem));
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 1.1rem;
+  box-shadow: 0 10px 40px rgba(0,0,0,.5);
+}
+.word-pop .close { position: absolute; top: .5rem; right: .6rem; background: none; border: 0; color: var(--muted); }
+.word-pop .term { font-size: 1.3rem; font-weight: 700; }
+.word-pop .pron { color: var(--muted); font-size: .85rem; }
+.word-pop .meaning { color: var(--accent); margin: .4rem 0; }
+.word-pop .expl { font-size: .9rem; }
+.word-pop .primary { margin-top: .8rem; width: 100%; }
+.error { color: var(--danger); }
+
+@media (max-width: 600px) {
+  .player { grid-template-columns: 56px 1fr; }
+  .player img { width: 56px; height: 56px; }
+  .controls { grid-column: 1 / -1; justify-content: center; }
+  .en { font-size: 1.1rem; }
+}

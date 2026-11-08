@@ -1,0 +1,16 @@
+{
+  "name": "letralab",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Aprender inglés con las canciones que escuchas en Spotify",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0"
+  },
+  "type": "module"
+}
