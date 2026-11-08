@@ -416,7 +416,10 @@ async function loadSong(song) {
     if (!state.countedSongs.has(song.id)) { state.countedSongs.add(song.id); stat("songs"); }
   } catch (e) {
     if (state.song !== song) return;
-    $("#lyrics-status").innerHTML = `<span class="error">No se pudo explicar la letra: ${escapeHtml(e.message)}</span>`;
+    // La letra ya se ve (sin traducción); el botón vuelve a pedir la explicación.
+    $("#lyrics-status").innerHTML = `<span class="error">No se pudo explicar la letra: ${escapeHtml(e.message)}</span>
+      <button class="retry" id="retry-explain">Reintentar</button>`;
+    $("#retry-explain").onclick = () => loadSong(song);
   }
 }
 

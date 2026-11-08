@@ -147,6 +147,7 @@ main { max-width: 980px; margin: 0 auto; padding: 1.4rem; }
 /* Listas */
 .row-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
 select { font: inherit; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: .4rem .6rem; }
+.retry { display: block; margin: .7rem auto 0; background: var(--panel-2); border: 0; border-radius: 999px; padding: .5rem 1.3rem; font-weight: 700; }
 .top-filters { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .check { display: flex; align-items: center; gap: .45rem; cursor: pointer; font-weight: 600; }
 .check input { width: 1.15em; height: 1.15em; accent-color: var(--accent, #1db954); }

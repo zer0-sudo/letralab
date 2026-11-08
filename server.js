@@ -30,6 +30,11 @@ const PORT = Number(process.env.PORT || 8888);
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
 // En el plan gratuito de Gemini solo están los modelos Flash-Lite.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
+// Si el modelo principal está saturado (503) o al límite (429), se prueban estos, que también
+// son gratis. Comprobado el 2026-11-08: los 2.5 ya no están para cuentas nuevas.
+const GEMINI_FALLBACKS = (process.env.GEMINI_FALLBACKS || "gemini-3.5-flash-lite,gemini-3.1-flash-lite")
+  .split(",").map((m) => m.trim()).filter(Boolean);
+const GEMINI_MODELS = [...new Set([GEMINI_MODEL, ...GEMINI_FALLBACKS])];
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-haiku-5-5";
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || "";
@@ -53,11 +58,19 @@ const PLAYS_FILE = path.join(DATA, "plays.json"); // historial propio: { played_
 const LANG_FILE = path.join(DATA, "lang.json");   // idioma ya calculado por canción
 
 // ---------- IA ----------
-class ProviderError extends Error {}
+class ProviderError extends Error {
+  constructor(message, { transient = false } = {}) {
+    super(message);
+    this.transient = transient; // saturado o al límite: vale la pena otro modelo o esperar
+  }
+}
 
-async function askGemini(system, prompt, schema) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-  const res = await fetch(url, {
+async function askGemini(model, system, prompt, schema) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  let res;
+  try {
+    res = await fetch(url, {
+      signal: AbortSignal.timeout(90000),
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": GEMINI_KEY },
     body: JSON.stringify({
@@ -69,10 +82,14 @@ async function askGemini(system, prompt, schema) {
         maxOutputTokens: 32768,
       },
     }),
-  });
+    });
+  } catch (error) {
+    throw new ProviderError(`Gemini (${model}) no respondió: ${error.message}`, { transient: true });
+  }
   if (!res.ok) {
     const body = await res.text();
-    throw new ProviderError(`Gemini ${res.status}${res.status === 429 ? " (límite alcanzado)" : ""}: ${body.slice(0, 200)}`);
+    const transient = [429, 500, 502, 503, 504].includes(res.status);
+    throw new ProviderError(`Gemini ${model} ${res.status}${res.status === 429 ? " (límite alcanzado)" : ""}: ${body.slice(0, 200)}`, { transient });
   }
   const data = await res.json();
   const candidate = data.candidates?.[0];
@@ -85,14 +102,32 @@ async function askGemini(system, prompt, schema) {
   }
 }
 
-// Gemini a veces devuelve un JSON roto: se reintenta una vez antes de pasar a Claude.
+// Prueba los modelos de Gemini en orden. Un JSON roto se reintenta una vez con el mismo
+// modelo; si está saturado o al límite, pasa al siguiente. Si todos lo están, espera unos
+// segundos y da una segunda vuelta (los picos de demanda suelen durar poco).
 async function askGeminiWithRetry(system, prompt, schema) {
-  try {
-    return await askGemini(system, prompt, schema);
-  } catch (error) {
-    if (!(error instanceof ProviderError) || !/JSON/.test(error.message)) throw error;
-    return askGemini(system, prompt, schema);
+  let last;
+  for (let round = 0; round < 2; round++) {
+    if (round) await new Promise((r) => setTimeout(r, 4000));
+    for (const model of GEMINI_MODELS) {
+      try {
+        try {
+          return await askGemini(model, system, prompt, schema);
+        } catch (error) {
+          if (!/JSON/.test(error.message)) throw error;
+          return await askGemini(model, system, prompt, schema);
+        }
+      } catch (error) {
+        last = error;
+        console.warn(`[IA] ${error.message.slice(0, 160)}`);
+        if (!error.transient && !/JSON/.test(error.message)) throw error;
+      }
+    }
   }
+  if (last?.transient) {
+    throw new ProviderError("Gemini está saturado en este momento (pasa a ratos). Espera un minuto y toca «Reintentar».", { transient: true });
+  }
+  throw last;
 }
 
 // Esquemas de respuesta (formato OpenAPI que usa Gemini).
