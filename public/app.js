@@ -441,9 +441,14 @@ async function loadSong(song) {
   } catch (e) {
     if (state.song !== song) return;
     // La letra ya se ve (sin traducción); el botón vuelve a pedir la explicación.
-    $("#lyrics-status").innerHTML = `<span class="error">No se pudo explicar la letra: ${escapeHtml(e.message)}</span>
+    // Sin clave (o con una mala) en la versión sin servidor: botón directo para ponerla.
+    const needsKey = state.config.standalone && /clave de Gemini/i.test(e.message);
+    $("#lyrics-status").innerHTML = needsKey
+      ? `<span class="error">Para traducir y explicar la letra falta tu clave de Gemini (gratis).</span>
+      <button class="retry" data-open-settings>🔑 Poner mi clave</button>`
+      : `<span class="error">No se pudo explicar la letra: ${escapeHtml(e.message)}</span>
       <button class="retry" id="retry-explain">Reintentar</button>`;
-    $("#retry-explain").onclick = () => loadSong(song);
+    if (!needsKey) $("#retry-explain").onclick = () => loadSong(song);
   }
 }
 
@@ -1040,8 +1045,9 @@ function setupSettings() {
     state.config = local.localConfig();
     $("#gemini-key").value = "";
     toast("Clave de Gemini guardada en este dispositivo.");
-    toggleSettings(true);
+    toggleSettings(false);
     if (!$("#view-setup").hidden) showSetup();
+    else if (state.song) loadSong(state.song); // explicar ya la canción que se está viendo
   };
 
   $("#export-data").onclick = async () => {
