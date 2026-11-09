@@ -55,6 +55,15 @@ main { max-width: 980px; margin: 0 auto; padding: 1.4rem; }
 .setup p, .hint { color: var(--muted); }
 .warn { background: #3a2a10; color: var(--note); border-radius: 12px; padding: .8rem; margin: 1rem 0; text-align: left; }
 .primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 999px; padding: .75rem 1.5rem; font-weight: 800; }
+.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 999px; padding: .7rem 1.3rem; font-weight: 700; cursor: pointer; }
+.icon-btn { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: .15rem .55rem; font-size: 1.05rem; line-height: 1.4; }
+.link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; font-weight: 700; }
+.settings-block { border-top: 1px solid var(--border); padding-top: .9rem; margin-top: .9rem; }
+.settings-block h3 { margin: 0 0 .3rem; font-size: 1rem; }
+.key-row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+.key-row input { flex: 1 1 14rem; min-width: 0; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: .65rem .8rem; font: inherit; }
+/* En pantallas táctiles no hay teclado físico: el botón de atajos sobra. */
+@media (hover: none) and (pointer: coarse) { .shortcuts-btn { display: none; } }
 .primary:disabled { opacity: .5; cursor: not-allowed; }
 
 /* Reproductor */

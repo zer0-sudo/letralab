@@ -1,7 +1,14 @@
 // LetraLab — interfaz.
 const $ = (s) => document.querySelector(s);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const REDIRECT_URI = `${location.origin}/callback`;
+const TOUCH = matchMedia("(pointer: coarse)").matches; // tablet o celular
+// Carpeta donde vive la app: "/" en el PC, "/letralab/" en GitHub Pages.
+const BASE_PATH = location.pathname === "/callback" ? "/" : new URL(".", location.href).pathname;
+// En el PC Spotify vuelve a /callback; la versión sin servidor vuelve a la propia página
+// (GitHub Pages no tiene la ruta /callback). Se fija al cargar la configuración.
+let REDIRECT_URI = `${location.origin}/callback`;
+// Versión sin servidor: módulo que atiende la API dentro del navegador.
+let local = null;
 const SCOPES = [
   "user-read-currently-playing",
   "user-read-playback-state",
@@ -82,7 +89,7 @@ async function tokenRequest(body) {
 async function handleCallback() {
   const params = new URLSearchParams(location.search);
   const code = params.get("code");
-  history.replaceState(null, "", "/");
+  history.replaceState(null, "", BASE_PATH);
   if (params.get("error")) throw new Error(`Spotify: ${params.get("error")}`);
   if (!code) return;
   await tokenRequest({
@@ -145,8 +152,14 @@ const toSong = (t) => ({
 async function playOnSpotify(body) {
   const { devices = [] } = (await spotify("/me/player/devices")) || {};
   const usable = devices.filter((d) => !d.is_restricted);
-  const device = usable.find((d) => d.is_active) || usable.find((d) => d.type === "Computer") || usable[0];
-  if (!device) throw new Error("No encontré ningún Spotify abierto. Abre la app de Spotify en tu PC o celular y vuelve a intentarlo.");
+  // En la tablet o el celular, preferir el Spotify de ese mismo aparato; en el PC, el del PC.
+  const preferred = TOUCH ? ["Tablet", "Smartphone"] : ["Computer"];
+  const device = usable.find((d) => d.is_active) || usable.find((d) => preferred.includes(d.type)) || usable[0];
+  if (!device) {
+    throw new Error(TOUCH
+      ? "No encontré ningún Spotify abierto. Abre la app de Spotify en esta tablet (pon cualquier canción un segundo) y vuelve a intentarlo."
+      : "No encontré ningún Spotify abierto. Abre la app de Spotify en tu PC o celular y vuelve a intentarlo.");
+  }
 
   if (!device.is_active) {
     await spotify("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [device.id], play: false }) });
@@ -179,6 +192,7 @@ function toast(text) {
 
 // ---------------- API local ----------------
 async function api(pathname, body, method) {
+  if (local) return local.localApi(method || (body ? "POST" : "GET"), pathname, body);
   const res = await fetch(pathname, body
     ? { method: method || "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
     : { method: method || "GET" });
@@ -239,13 +253,20 @@ function showView(name) {
 function showSetup() {
   $("#tabs").hidden = true;
   showView("setup");
-  const missing = [];
-  if (!state.config.spotifyClientId) missing.push("<code>SPOTIFY_CLIENT_ID</code>");
-  if (!state.config.ai.gemini && !state.config.ai.claude) missing.push("<code>GEMINI_API_KEY</code> (o <code>ANTHROPIC_API_KEY</code>)");
-  $("#setup-missing").hidden = !missing.length;
-  $("#setup-missing").innerHTML = missing.length
-    ? `Falta configurar en el archivo <code>.env</code>: ${missing.join(", ")}. Luego reinicia el servidor.`
-    : "";
+  if (state.config.standalone) {
+    // Sin servidor no hay .env: la clave de Gemini se escribe en Ajustes.
+    $("#setup-missing").hidden = state.config.ai.gemini;
+    $("#setup-missing").innerHTML = state.config.ai.gemini ? "" :
+      `Para traducir y explicar las letras falta tu clave gratis de Gemini. <button class="link" data-open-settings>Ponerla en ⚙ Ajustes</button>`;
+  } else {
+    const missing = [];
+    if (!state.config.spotifyClientId) missing.push("<code>SPOTIFY_CLIENT_ID</code>");
+    if (!state.config.ai.gemini && !state.config.ai.claude) missing.push("<code>GEMINI_API_KEY</code> (o <code>ANTHROPIC_API_KEY</code>)");
+    $("#setup-missing").hidden = !missing.length;
+    $("#setup-missing").innerHTML = missing.length
+      ? `Falta configurar en el archivo <code>.env</code>: ${missing.join(", ")}. Luego reinicia el servidor.`
+      : "";
+  }
   $("#login").disabled = !state.config.spotifyClientId;
 }
 
@@ -973,10 +994,90 @@ function renderReview() {
   };
 }
 
+// ---------------- Configuración y modo ----------------
+// Si hay servidor (PC), él responde /api/config. Si no (GitHub Pages en la tablet), la app
+// carga la versión que corre entera en el navegador.
+async function loadConfig() {
+  try {
+    const res = await fetch("/api/config");
+    if (res.ok && res.headers.get("content-type")?.includes("json")) return await res.json();
+  } catch {}
+  local = await import("./local-api.js");
+  return local.localConfig();
+}
+
+// ---------------- Ajustes y respaldo ----------------
+function toggleSettings(open) {
+  $("#settings").hidden = !open;
+  if (!open) return;
+  const standalone = !!state.config.standalone;
+  $("#settings-key").hidden = !standalone;
+  $("#settings-mode").textContent = standalone
+    ? "Versión sin servidor: todo se guarda en este navegador. Para pasar tu vocabulario entre el PC y la tablet, exporta en uno e importa en el otro."
+    : "Versión del PC: los datos se guardan en la carpeta data/ del PC.";
+  if (standalone) {
+    $("#gemini-key").value = "";
+    $("#gemini-key").placeholder = local.getGeminiKey() ? "•••••••• (guardada; escribe otra para cambiarla)" : "AIza…";
+  }
+}
+
+async function reloadData() {
+  [state.vocab, state.stats] = await Promise.all([api("/api/vocab"), api("/api/stats")]);
+  updateCounts();
+  renderStreak();
+}
+
+function setupSettings() {
+  $("#settings-open").onclick = () => toggleSettings(true);
+  $("#settings-close").onclick = () => toggleSettings(false);
+  $("#settings").onclick = (ev) => { if (ev.target.id === "settings") toggleSettings(false); };
+  document.addEventListener("click", (ev) => { if (ev.target.closest("[data-open-settings]")) toggleSettings(true); });
+
+  $("#gemini-save").onclick = () => {
+    const key = $("#gemini-key").value.trim();
+    if (!key) return;
+    local.setGeminiKey(key);
+    state.config = local.localConfig();
+    $("#gemini-key").value = "";
+    toast("Clave de Gemini guardada en este dispositivo.");
+    toggleSettings(true);
+    if (!$("#view-setup").hidden) showSetup();
+  };
+
+  $("#export-data").onclick = async () => {
+    try {
+      const data = await api("/api/export");
+      const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `letralab-respaldo-${today()}.json`;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast(`Respaldo listo: ${data.vocab.length} palabras y ${Object.keys(data.cache).length} letras o explicaciones.`);
+    } catch (e) { toast(`No se pudo exportar: ${e.message}`); }
+  };
+
+  $("#import-file").onchange = async (ev) => {
+    const file = ev.target.files[0];
+    ev.target.value = "";
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const r = await api("/api/import", data);
+      await reloadData().catch(() => {});
+      toast(`Importado: ${r.vocab} palabras nuevas y ${r.cache} letras o explicaciones.`);
+    } catch (e) { toast(`No se pudo importar: ${e.message}`); }
+  };
+}
+
 // ---------------- Arranque ----------------
 async function main() {
   document.documentElement.style.setProperty("--scale", store.get("scale") || 1);
-  state.config = await api("/api/config");
+  state.config = await loadConfig();
+  if (state.config.standalone) REDIRECT_URI = location.origin + BASE_PATH;
+  setupSettings();
 
   $("#login").onclick = login;
   $("#tabs").onclick = (ev) => { const b = ev.target.closest("button"); if (b) showView(b.dataset.view); };
@@ -1006,15 +1107,14 @@ async function main() {
   $("#shortcuts-close").onclick = () => toggleShortcuts(false);
   $("#shortcuts").onclick = (ev) => { if (ev.target.id === "shortcuts") toggleShortcuts(false); };
 
-  if (location.pathname === "/callback") {
+  const back = new URLSearchParams(location.search);
+  if (location.pathname === "/callback" || back.has("code") || back.has("error")) {
     try { await handleCallback(); } catch (e) { alert(e.message); }
   }
 
   if (!state.config.spotifyClientId || !(await accessToken())) return showSetup();
 
-  [state.vocab, state.stats] = await Promise.all([api("/api/vocab"), api("/api/stats")]);
-  updateCounts();
-  renderStreak();
+  await reloadData();
   $("#tabs").hidden = false;
   showView("now");
   poll();
@@ -1029,4 +1129,4 @@ async function main() {
 main();
 
 // Para poder instalar LetraLab como app (ventana propia, ícono en la barra de tareas).
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

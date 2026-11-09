@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LetraLab</title>
-  <link rel="icon" href="/icons/favicon-64.png">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" href="icons/favicon-64.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <meta name="theme-color" content="#0f1115">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="top">
@@ -21,6 +21,7 @@
     </nav>
     <div class="top-right">
       <div class="streak" id="streak" hidden></div>
+      <button id="settings-open" class="icon-btn" title="Ajustes y respaldo" aria-label="Ajustes">⚙</button>
       <div class="font-size" title="Tamaño del texto">
         <button id="font-down" aria-label="Texto más pequeño">A−</button>
         <button id="font-up" aria-label="Texto más grande">A+</button>
@@ -123,6 +124,31 @@
     </div>
   </div>
 
-  <script type="module" src="/app.js"></script>
+  <!-- Ajustes y respaldo -->
+  <div id="settings" class="shortcuts" hidden>
+    <div class="shortcuts-card" role="dialog" aria-label="Ajustes">
+      <button class="close" id="settings-close" aria-label="Cerrar">✕</button>
+      <h2>Ajustes</h2>
+      <p id="settings-mode" class="hint"></p>
+      <div id="settings-key" class="settings-block" hidden>
+        <h3>Clave de Gemini</h3>
+        <p class="hint">Gratis en <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Se guarda solo en este navegador.</p>
+        <div class="key-row">
+          <input id="gemini-key" type="password" autocomplete="off" spellcheck="false" placeholder="AIza…">
+          <button id="gemini-save" class="primary">Guardar</button>
+        </div>
+      </div>
+      <div class="settings-block">
+        <h3>Respaldo del vocabulario y el progreso</h3>
+        <p class="hint">Exporta un archivo con tus palabras, tu racha y las letras ya explicadas. Impórtalo en otro dispositivo para seguir donde ibas: se suma a lo que ya haya, no borra nada.</p>
+        <div class="key-row">
+          <button id="export-data" class="secondary">⬇ Exportar</button>
+          <label class="secondary file-btn">⬆ Importar<input id="import-file" type="file" accept="application/json,.json" hidden></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>
